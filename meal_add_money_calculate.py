@@ -10,7 +10,7 @@ shift_pattern = ["오전"]*5 + ["휴무"] + ["야간"]*5 + ["휴무"]*2 + ["오�
 def calculate_pattern_start_date(shift_pattern, reference_date, shift_type, shift_day):
     pattern_length = len(shift_pattern)
     shift_index = (shift_pattern.index(shift_type) + shift_day - 1) % pattern_length
-    days_passed = (reference_date.toordinal() - shift_index) % pattern_length
+    days_passed = (reference_date.toordinal() - shift_index + 1) % pattern_length # 실제 오전 1일차 입력을 오전 0 값을 수정 -> 오전 1
     return datetime.fromordinal(reference_date.toordinal() - days_passed)
 
 # 식비 계산
