@@ -4,38 +4,21 @@ from datetime import datetime, timedelta
 import pickle
 import sys
 
-# 교대근무 패턴
 shift_pattern = ["오전"] * 5 + ["휴무"] + ["야간"] * 5 + ["휴무"] * 2 + ["오후"] * 5 + ["휴무"] * 2
 
+def is_holiday(date):
+    # For simplicity, consider Saturday and Sunday as holidays
+    return date.weekday() == 5 or date.weekday() == 6
 
-# 날짜 차이 계산
 def calculate_pattern_start_date(shift_pattern, reference_date, shift_type, shift_day):
     pattern_length = len(shift_pattern)
-    shift_index = (shift_pattern.index(shift_type) + shift_day - 1) % pattern_length
-    days_passed = (reference_date.toordinal() - shift_index + 1) % pattern_length # 오전 1일차일 경우 실제입력 오전 0을 해야되는데 그것을 보정 
-    return datetime.fromordinal(reference_date.toordinal() - days_passed)
+    shift_index = shift_pattern.index(shift_type)
+    pattern_start_date = reference_date - timedelta(days=(shift_index + shift_day - 1))
+    if pattern_start_date > reference_date:
+        pattern_start_date -= timedelta(days=pattern_length)
+    return pattern_start_date
 
-
-# 식비 계산
-def calculate_meal_allowance(
-    start_date, end_date, shift_pattern, pattern_start_date, morning_holiday_count
-):
-    meal_allowance = 0
-    current_date = start_date
-    pattern_length = len(shift_pattern)
-    while current_date <= end_date:
-        shift_type = shift_pattern[
-            (current_date - pattern_start_date).days % pattern_length
-        ]
-        if shift_type != "오전":
-            meal_allowance += 8000
-        current_date += timedelta(days=1)
-    meal_allowance += morning_holiday_count * 8000
-    return meal_allowance
-
-
-# 식비 계산 후 메시지박스 출력
-def calculate_and_show_allowance():
+def show_shift_and_meal_info():
     reference_date = datetime.strptime(reference_date_entry.get(), "%Y-%m-%d")
     shift_type, shift_day = shift_info_entry.get().split()
     shift_day = int(shift_day)
@@ -43,42 +26,31 @@ def calculate_and_show_allowance():
     end_date = datetime.strptime(end_date_entry.get(), "%Y-%m-%d")
     morning_holiday_count = int(morning_holiday_count_entry.get())
 
-    pattern_start_date = calculate_pattern_start_date(
-        shift_pattern, reference_date, shift_type, shift_day
-    )
+    pattern_start_date = calculate_pattern_start_date(shift_pattern, reference_date, shift_type, shift_day)
 
-    meal_allowance = calculate_meal_allowance(
-        start_date, end_date, shift_pattern, pattern_start_date, morning_holiday_count
-    )
-    messagebox.showinfo("식비 계산 결과", f"근무 기간 동안의 식비는 {meal_allowance}원입니다.")
-
-
-# 근무 일정 출력
-def show_shift_schedule():
-    reference_date = datetime.strptime(reference_date_entry.get(), "%Y-%m-%d")
-    shift_type, shift_day = shift_info_entry.get().split()
-    shift_day = int(shift_day)
-    start_date = datetime.strptime(start_date_entry.get(), "%Y-%m-%d")
-    end_date = datetime.strptime(end_date_entry.get(), "%Y-%m-%d")
-
-    pattern_start_date = calculate_pattern_start_date(
-        shift_pattern, reference_date, shift_type, shift_day
-    )
-
+    meal_allowance = 0
     schedule = ""
     current_date = start_date
     pattern_length = len(shift_pattern)
     while current_date <= end_date:
-        shift_type = shift_pattern[
-            (current_date - pattern_start_date).days % pattern_length
-        ]
-        schedule += f"{current_date.strftime('%Y-%m-%d (%A)')}: {shift_type}\n"
+        shift_type_today = shift_pattern[(current_date - pattern_start_date).days % pattern_length]
+        
+        if shift_type_today == "오전" and is_holiday(current_date):
+            schedule += f"{current_date.strftime('%Y-%m-%d (%A)')}: {shift_type_today} (식비지급)\n"
+            meal_allowance += 8000
+        elif shift_type_today not in ["오전", "휴무"]:
+            schedule += f"{current_date.strftime('%Y-%m-%d (%A)')}: {shift_type_today} (식비지급)\n"
+            meal_allowance += 8000
+        else:
+            schedule += f"{current_date.strftime('%Y-%m-%d (%A)')}: {shift_type_today}\n"
+        
         current_date += timedelta(days=1)
 
-    messagebox.showinfo("근무 일정", schedule)
+    meal_allowance += morning_holiday_count * 8000
+    schedule += f"\n식비 지급 횟수: {meal_allowance // 8000}회\n총 식비: {meal_allowance}원"
 
+    messagebox.showinfo("근무 일정 및 식비 정보", schedule)
 
-# 마지막 입력 값 저장
 def save_last_input():
     last_input = {
         "reference_date": reference_date_entry.get(),
@@ -90,8 +62,6 @@ def save_last_input():
     with open("last_input.pkl", "wb") as f:
         pickle.dump(last_input, f)
 
-
-# 마지막 입력 값 불러오기
 def load_last_input():
     try:
         with open("last_input.pkl", "rb") as f:
@@ -105,10 +75,8 @@ def load_last_input():
     end_date_entry.insert(0, last_input["end_date"])
     morning_holiday_count_entry.insert(0, last_input["morning_holiday_count"])
 
-
-# GUI 설정
 root = tk.Tk()
-root.title("식대계산 및 근무표확인 ")
+root.title("식대계산 및 근무표확인")
 
 tk.Label(root, text="참조 날짜 (YYYY-MM-DD)").pack()
 reference_date_entry = tk.Entry(root)
@@ -130,11 +98,12 @@ tk.Label(root, text="오전 공휴일 수").pack()
 morning_holiday_count_entry = tk.Entry(root)
 morning_holiday_count_entry.pack()
 
-calculate_button = tk.Button(root, text="식비 계산하기", command=calculate_and_show_allowance)
-calculate_button.pack()
-
-show_schedule_button = tk.Button(root, text="근무 일정 표시하기", command=show_shift_schedule)
+show_schedule_button = tk.Button(root, text="근무 일정 및 식비 정보 확인", command=show_shift_and_meal_info)
 show_schedule_button.pack()
+
+# 프로그램이 시작될 때 마지막 입력 값을 불러옴
+exit_button = tk.Button(root, text="종료", command=sys.exit)
+exit_button.pack()
 
 root.protocol("WM_DELETE_WINDOW", lambda: (save_last_input(), sys.exit(0)))  # sys.exit(0) 추가  # 프로그램이 종료될 때 마지막 입력 값을 저장
 load_last_input()  # 프로그램이 시작될 때 마지막 입력 값을 불러옴
